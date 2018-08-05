@@ -100,12 +100,12 @@ export OUTPUT	:=	$(CURDIR)/$(TARGET)
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
-	cp -v $(OUTPUT).dol apps/netconf/boot.dol
+	cp -v $(OUTPUT).dol apps/wii-netconf/boot.dol
 
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
-	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).dol apps/netconf/boot.dol
+	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).dol apps/wii-netconf/boot.dol
 
 #---------------------------------------------------------------------------------
 run:
