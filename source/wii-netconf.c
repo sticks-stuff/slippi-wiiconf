@@ -9,12 +9,19 @@
 #include <network.h>
 #include <fat.h>
 
+#include <ogc/usbstorage.h>
+#include <ogc/usb.h>
+#include <ogc/disc_io.h>
+#include <sdcard/wiisd_io.h>
+
 static void *xfb = NULL;
 static GXRModeObj *rmode = NULL;
 
 #define NAND_CUR_PATH	"/shared2/sys/net/02/config.dat"
-#define USB_CUR_PATH	"fat:/current_config.dat"
-#define USB_NEW_PATH	"fat:/new_config.dat"
+#define USB_CUR_PATH	"usb:/current_config.dat"
+#define USB_NEW_PATH	"usb:/new_config.dat"
+#define SD_CUR_PATH	"sd:/current_config.dat"
+#define SD_NEW_PATH	"sd:/new_config.dat"
 
 /* Typical libogc video/console initialization */
 void xfb_init(void)
@@ -36,8 +43,7 @@ void xfb_init(void)
 		VIDEO_WaitVSync();
 }
 
-/* Check for USB storage and mount - no SD card right now */
-int storage_config(void)
+int usb_config(void)
 {
 	__io_usbstorage.startup();
 	if (!__io_usbstorage.isInserted())
@@ -46,13 +52,32 @@ int storage_config(void)
 		return -1;
 	}
 
-	if (!fatMountSimple("fat", &__io_usbstorage))
+	if (!fatMountSimple("usb", &__io_usbstorage))
 	{
 		printf("[!] Couldn't mount USB storage\n");
 		return -1;
 	}
 	return 0;
 }
+void usb_shutdown(void) { fatUnmount("usb"); __io_usbstorage.shutdown(); }
+
+int sd_config(void)
+{
+	__io_wiisd.startup();
+	if (!__io_wiisd.isInserted())
+	{
+		printf("[!] SD card startup failed\n");
+		return -1;
+	}
+	if (!fatMountSimple("sd", &__io_wiisd))
+	{
+		printf("[!] Couldn't mount SD card storage\n");
+		return -1;
+	}
+	return 0;
+
+}
+void sd_shutdown(void) { fatUnmount("sd"); __io_wiisd.shutdown(); }
 
 /* Carve out data region to store the current config.dat contents before we
  * write them to a FAT storage device */
@@ -88,10 +113,10 @@ int get_config(void)
 		return -1;
 	}
 
-	printf("[*] Writing config.dat to %s\n", USB_CUR_PATH);
-	FILE *fp = fopen(USB_CUR_PATH, "wb");
+	printf("[*] Writing config.dat to %s\n", SD_CUR_PATH);
+	FILE *fp = fopen(SD_CUR_PATH, "wb");
 	if (!fp) {
-		printf("[!] Couldn't open %s\n", USB_CUR_PATH);
+		printf("[!] Couldn't open %s\n", SD_CUR_PATH);
 		return -1;
 	}
 	res = fwrite(config_data, 1, 0x1b5c, fp);
@@ -128,10 +153,10 @@ int set_config(void)
 	// IOS fstat - I guess this needs to be 32-byte aligned too?
 	fstats *stats = memalign(32, sizeof(fstats));
 
-	printf("[*] Reading from %s\n", USB_NEW_PATH);
-	FILE *fp = fopen(USB_NEW_PATH, "rb");
+	printf("[*] Reading from %s\n", SD_NEW_PATH);
+	FILE *fp = fopen(SD_NEW_PATH, "rb");
 	if (!fp) {
-		printf("[!] Couldn't find %s\n", USB_NEW_PATH);
+		printf("[!] Couldn't find %s\n", SD_NEW_PATH);
 		free(stats);
 		free(new_config);
 		free(buf);
@@ -209,41 +234,28 @@ int set_config(void)
 	return 0;
 }
 
-static char localip[16] = {0};
-static char gateway[16] = {0};
-static char netmask[16] = {0};
 int main(int argc, char **argv)
 {
 	u32 res;
 
 	xfb_init();
 	printf("\x1b[2;0H");
+	printf("\n\n");
 
-	/* Make sure a USB device is attached */
-
-	res = storage_config();
+	res = sd_config();
 	if (res != 0) {
-		printf("[!] Couldn't initialize USB device\n");
+		printf("[!] Couldn't initialize SD card\n");
 		printf("[!] Rebooting in 5s ...");
 		sleep(5);
 		exit(0);
 	}
 	else {
-		printf("[*] Found USB device\n");
+		printf("[*] Found SD card\n");
 	}
-
-	/* Try initializing the network first */
-
-	res = if_config(localip, netmask, gateway, TRUE, 20);
-
-	/* Wait for user to select some option */
 
 	while(1) {
 		printf("\x1b[40m\x1b[2J\x1b[2;0H");
 		printf("[*] wii-netconf [https://github.com/hosaka-corp/wii-netconf]\n");
-		printf("[*] Current configuration:\n");
-		printf("    IP Address:\t %s\n", localip);
-		printf("\n");
 		printf("[*] Press A to read config to usb:/current_config.dat\n");
 		printf("[*] Press B to write config from usb:/new_config.dat\n");
 		printf("[*] Press START to reboot\n");
@@ -270,8 +282,10 @@ int main(int argc, char **argv)
 			}
 			sleep(5);
 		}
-		else if (pressed & PAD_BUTTON_START)
+		else if (pressed & PAD_BUTTON_START){
+			sd_shutdown();
 			exit(0);
+		}
 
 		VIDEO_WaitVSync();
 	}

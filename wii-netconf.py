@@ -9,8 +9,8 @@ USAGE:
     2. Use the --to-json flag to convert into a readable JSON format
     3. Make some changes on it in a text editor
     4. Use the --to-binary flag on JSON to convert back into binary config.dat
-    5. Write the new config.dat onto FAT32-formatted USB and use the netconf
-       DOL to overwrite the existing configuration on your console
+    5. Write the new config.dat onto FAT32-formatted SD card and use the
+       wii-netconf DOL to overwrite the existing configuration on your console
 
 TODO/NOTES:
     - Written on Python 3.6
@@ -20,13 +20,15 @@ TODO/NOTES:
     - JSON expects integer representation of Wi-Fi encryption schemes
       according to the ones defined in this file.
     - Currently just storing header bytes as a string of hex digits because
-      I don't know what they do or how they work.
+      I don't know what they do or how they work. See README.md for important
+      information about this.
 '''
 
 import sys
 import os
 import json
 import binascii
+import ipaddress
 
 from struct import pack, unpack
 from enum import Enum
@@ -96,6 +98,33 @@ def json_to_flags(flags):
     if (flags['use-wired']): byte |= 0x01
     return byte
 
+def static_to_json(data):
+    static = {}
+
+    if (len(data) != 32):
+        print("static_to_json() expected 32 bytes, got {}".format(len(data)))
+        return None
+
+    ip = unpack(">L", data[0:4])[0]
+    mask = unpack(">L", data[4:8])[0]
+    gw = unpack(">L", data[8:12])[0]
+    dns1 = unpack(">L", data[12:16])[0]
+    dns2 = unpack(">L", data[16:20])[0]
+    # <2 bytes padding ...>
+    mtu = unpack(">H", data[22:24])[0]
+    # <8 bytes padding ...>
+
+    static['ip'] = str(ipaddress.IPv4Address(ip))
+    static['mask'] = str(ipaddress.IPv4Address(mask))
+    static['gw'] = str(ipaddress.IPv4Address(gw))
+    static['dns1'] = str(ipaddress.IPv4Address(dns1))
+    static['dns2'] = str(ipaddress.IPv4Address(dns2))
+    static['mtu'] = mtu
+
+    print(static)
+    return static
+
+
 # -----------------------------------------------------------------------------
 # netconf object definition
 
@@ -103,6 +132,14 @@ class netconf(object):
     """ Object for representing some Wii network configuration data.
     There are header bytes, then three connection profiles.
     Much of the binary format is not-well-understood, or just NUL padding.
+
+    IMPORTANT: The header fields are currently just stored as a string of
+    hex bytes. The structure of this is not-well-understood; *however*,
+    it does appear to have some effect on whether or not a USB Ethernet
+    adapter can be used. In my testing, the USB Ethernet adapter only
+    seems to work when the header is set to "0000000002070000". All of the
+    wireless profiles I've tested have had this set to "0000000001070000".
+    I suspect that fifth byte may be necessary to enable a wired connection.
 
     Data is stored in a dictionary of the form:
 
@@ -112,6 +149,7 @@ class netconf(object):
     A connection profile is a dictionary of the form:
 
         {   'flags': <dictionary representing profile flags>,
+            'static': <dictionary representing static network config>,
             'ssid': <string up to 32 byte>,
             'enc': <1 byte integer>,
             'key': <64-byte string>, }
@@ -124,6 +162,14 @@ class netconf(object):
             'use-dhcp-addr': bool,
             'use-dhcp-dns': bool,
             'use-wired': bool, }
+
+    A set of static network configuration is a dictionary of the form:
+
+        {   'ip': string,
+            'mask': string,
+            'gw': string,
+            'dns1': string,
+            'dns2': string, }
     """
 
     def __init__(self):
@@ -164,7 +210,8 @@ class netconf(object):
                 f.seek(3, os.SEEK_CUR)
 
                 # Static network configuration
-                f.seek(32, os.SEEK_CUR)
+                self.data['conn'][i]['static'] = static_to_json(f.read(32))
+                #f.seek(32, os.SEEK_CUR)
 
                 # Proxy configuration and padding
                 f.seek(327, os.SEEK_CUR)
@@ -215,7 +262,22 @@ class netconf(object):
             output.extend(b'\x00' * 3)
 
             # Static network configuration
-            output.extend(b'\x00' * 32)
+            #output.extend(b'\x00' * 32)
+            ip_bytes = pack(">L", int(ipaddress.IPv4Address(self.data['conn'][i]['static']['ip'])))
+            mask_bytes = pack(">L", int(ipaddress.IPv4Address(self.data['conn'][i]['static']['mask'])))
+            gw_bytes = pack(">L", int(ipaddress.IPv4Address(self.data['conn'][i]['static']['gw'])))
+            dns1_bytes = pack(">L", int(ipaddress.IPv4Address(self.data['conn'][i]['static']['dns1'])))
+            dns2_bytes = pack(">L", int(ipaddress.IPv4Address(self.data['conn'][i]['static']['dns2'])))
+            mtu_bytes = pack(">H", self.data['conn'][i]['static']['mtu'])
+
+            output.extend(ip_bytes)
+            output.extend(mask_bytes)
+            output.extend(gw_bytes)
+            output.extend(dns1_bytes)
+            output.extend(dns2_bytes)
+            output.extend(b'\x00' * 2)
+            output.extend(mtu_bytes)
+            output.extend(b'\x00' * 8)
 
             # Proxy configuration
             output.extend(b'\x00' * 327)
