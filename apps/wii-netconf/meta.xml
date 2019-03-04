@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<app version="1.0">
-	<name>wii-netconf</name>
-	<coder>https://github.com/hosaka-corp</coder>
-	<version>0.1</version>
-	<release_date>20180804000000</release_date>
-	<short_description>Wii network configuration</short_description>
-	<long_description>Experimental tool for playing with Wii network configuration.</long_description>
-</app>
