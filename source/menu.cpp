@@ -23,6 +23,7 @@
 
 #include "util.h"
 #include "netconf.h"
+#include "Slippi.h"
 
 #define THREAD_SLEEP 100
 
@@ -638,7 +639,7 @@ static int MenuSlippi()
 			// Flush settings back to disk before exiting
 			if (settings_changed == true)
 			{
-				FILE *slippi_fp = fopen("sd:/slippi_console.dat", "wb");
+				FILE *slippi_fp = fopen(SD_SLIPPI_DAT_FILE, "wb");
 				if (slippi_fp) 
 				{
 					fwrite(&settings, 1, sizeof(struct slippi_settings), slippi_fp);

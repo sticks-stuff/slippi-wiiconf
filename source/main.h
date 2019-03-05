@@ -33,19 +33,6 @@ struct SSettings {
 };
 extern struct SSettings Settings;
 
-
-/* Slippi-specific settings.
- *
- * rtc_bias - 32-bits, "difference between RTC and local time" in seconds.
- *	      Specifically, the number of seconds since 1/1/2000 00:00:00.
- * nickname - 32 byte, user-configurable nickname for this console.
- *	      
- */
-struct slippi_settings {
-	u32	rtc_bias;
-	char	nickname[32];
-};
-
 void ExitApp();
 extern int ExitRequested;
 extern FreeTypeGX *fontSystem[];

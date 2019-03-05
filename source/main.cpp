@@ -28,6 +28,7 @@
 
 #include "storage.h"
 #include "util.h"
+#include "Slippi.h"
 
 struct SSettings Settings;
 
@@ -144,24 +145,24 @@ int main(int argc, char *argv[])
 	 * Otherwise, just read the contents of the file into memory.
 	 */
 
-	slippi_fp = fopen("sd:/slippi_console.dat", "rb");
+	slippi_fp = fopen(SD_SLIPPI_DAT_FILE, "rb");
 	if (!slippi_fp) {
 
 		// Write a new, empty configuration file
-		slippi_fp = fopen("sd:/slippi_console.dat", "wb");
+		slippi_fp = fopen(SD_SLIPPI_DAT_FILE, "wb");
 
 		// Start with the current RTC bias from SYSCONF
 		settings.rtc_bias = current_bias;
 		printf("    settings.rtc_bias = %08x\n", settings.rtc_bias);
 
 		res = fwrite(&settings, 1, sizeof(struct slippi_settings), slippi_fp);
-		printf("    wrote %08x bytes to slippi_console.dat\n", res);
+		printf("    wrote %08x bytes to %s\n", res, SD_SLIPPI_DAT_FILE);
 		fclose(slippi_fp);
 	}
 	else
 	{
 		res = fread(&settings, 1, sizeof(struct slippi_settings), slippi_fp);
-		printf("    read %08x bytes from slippi_console.dat\n", res);
+		printf("    read %08x bytes from %s\n", res, SD_SLIPPI_DAT_FILE);
 		fclose(slippi_fp);
 
 		printf("    settings.rtc_bias = %08x\n", settings.rtc_bias);
