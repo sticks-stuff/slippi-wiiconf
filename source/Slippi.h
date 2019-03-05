@@ -4,11 +4,12 @@
 /* These header files *MUST* match across these projects:
  *
  *	project-slippi/slippi-wiiconf/source/Slippi.h
- *	project-slippi/Nintendont/loader/include/Slippi.h
+ *	project-slippi/Nintendont/common/include/Slippi.h
  *
  * If you update one, make sure you update the other!
  */
 
+#define SLIPPI_DAT_FILE		"/slippi_console.dat"
 #define SD_SLIPPI_DAT_FILE	"sd:/slippi_console.dat"
 #define USB_SLIPPI_DAT_FILE	"usb:/slippi_console.dat"
 
