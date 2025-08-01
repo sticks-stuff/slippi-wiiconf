@@ -450,6 +450,14 @@ struct tm *current_time;	// updated every second for option display
 char temp_nickname[32] = { 0 };	// temporary buffer for user input
 u32  temp_bias = 0;		// temporary value for user input
 
+// FTP temporary settings
+u32  temp_ftp_enabled = 0;
+char temp_ftp_server[64] = { 0 };
+u16  temp_ftp_port = 21;
+char temp_ftp_username[32] = { 0 };
+char temp_ftp_password[32] = { 0 };
+char temp_ftp_directory[64] = { 0 };
+
 static int MenuSlippi()
 {
 	bool settings_changed = false;
@@ -466,11 +474,25 @@ static int MenuSlippi()
 	sprintf(options.name[i++], "Hour");
 	sprintf(options.name[i++], "Minute");
 	sprintf(options.name[i++], "Second");
+	sprintf(options.name[i++], "FTP Enabled");
+	sprintf(options.name[i++], "FTP Server");
+	sprintf(options.name[i++], "FTP Port");
+	sprintf(options.name[i++], "FTP Username");
+	sprintf(options.name[i++], "FTP Password");
+	sprintf(options.name[i++], "FTP Directory");
 	options.length = i;
 
 	// Initialize these with the value from settings
 	temp_bias = settings.rtc_bias;
 	strncpy(temp_nickname, settings.nickname, 32);
+	
+	// Initialize FTP temp variables
+	temp_ftp_enabled = settings.ftp_enabled;
+	strncpy(temp_ftp_server, settings.ftp_server, 64);
+	temp_ftp_port = settings.ftp_port;
+	strncpy(temp_ftp_username, settings.ftp_username, 32);
+	strncpy(temp_ftp_password, settings.ftp_password, 32);
+	strncpy(temp_ftp_directory, settings.ftp_directory, 64);
 
 	GuiText titleTxt("Slippi Settings", 28, (GXColor){255, 255, 255, 255});
 	titleTxt.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
@@ -536,6 +558,26 @@ static int MenuSlippi()
 			case 0:
 				OnScreenKeyboard(temp_nickname, 31);
 				break;
+			// FTP Enabled (toggle)
+			case 7:
+				temp_ftp_enabled = !temp_ftp_enabled;
+				break;
+			// FTP Server
+			case 8:
+				OnScreenKeyboard(temp_ftp_server, 63);
+				break;
+			// FTP Username  
+			case 10:
+				OnScreenKeyboard(temp_ftp_username, 31);
+				break;
+			// FTP Password
+			case 11:
+				OnScreenKeyboard(temp_ftp_password, 31);
+				break;
+			// FTP Directory
+			case 12:
+				OnScreenKeyboard(temp_ftp_directory, 63);
+				break;
 		}
 
 		// Handle Left/Right pad presses for certain options
@@ -565,6 +607,11 @@ static int MenuSlippi()
 			// Second
 			case 6:
 				current_time->tm_sec += 1;
+				break;
+			// FTP Port
+			case 9:
+				if (temp_ftp_port < 65535)
+					temp_ftp_port += 1;
 				break;
 		}
 
@@ -600,6 +647,11 @@ static int MenuSlippi()
 			case 6:
 				current_time->tm_sec -= 1;
 				break;
+			// FTP Port
+			case 9:
+				if (temp_ftp_port > 1)
+					temp_ftp_port -= 1;
+				break;
 		}
 
 		// Update the bias according to user input
@@ -618,6 +670,14 @@ static int MenuSlippi()
 		snprintf(options.value[4], 32, "%02d",	current_time->tm_hour);
 		snprintf(options.value[5], 32, "%02d",	current_time->tm_min);
 		snprintf(options.value[6], 32, "%02d",	current_time->tm_sec);
+		
+		// Render FTP options
+		snprintf(options.value[7], 32, "%s",	temp_ftp_enabled ? "Yes" : "No");
+		snprintf(options.value[8], 32, "%s",	temp_ftp_server);
+		snprintf(options.value[9], 32, "%d",	temp_ftp_port);
+		snprintf(options.value[10], 32, "%s",	temp_ftp_username);
+		snprintf(options.value[11], 32, "%s",	strlen(temp_ftp_password) > 0 ? "***" : "");
+		snprintf(options.value[12], 32, "%s",	temp_ftp_directory);
 
 		optionBrowser.TriggerUpdate();
 
@@ -633,6 +693,38 @@ static int MenuSlippi()
 			if (temp_bias != settings.rtc_bias)
 			{
 				settings.rtc_bias = temp_bias;
+				settings_changed = true;
+			}
+			
+			// Check FTP settings changes
+			if (temp_ftp_enabled != settings.ftp_enabled)
+			{
+				settings.ftp_enabled = temp_ftp_enabled;
+				settings_changed = true;
+			}
+			if (strncmp(temp_ftp_server, settings.ftp_server, 64) != 0)
+			{
+				strncpy(settings.ftp_server, temp_ftp_server, 64);
+				settings_changed = true;
+			}
+			if (temp_ftp_port != settings.ftp_port)
+			{
+				settings.ftp_port = temp_ftp_port;
+				settings_changed = true;
+			}
+			if (strncmp(temp_ftp_username, settings.ftp_username, 32) != 0)
+			{
+				strncpy(settings.ftp_username, temp_ftp_username, 32);
+				settings_changed = true;
+			}
+			if (strncmp(temp_ftp_password, settings.ftp_password, 32) != 0)
+			{
+				strncpy(settings.ftp_password, temp_ftp_password, 32);
+				settings_changed = true;
+			}
+			if (strncmp(temp_ftp_directory, settings.ftp_directory, 64) != 0)
+			{
+				strncpy(settings.ftp_directory, temp_ftp_directory, 64);
 				settings_changed = true;
 			}
 

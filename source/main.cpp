@@ -154,6 +154,14 @@ int main(int argc, char *argv[])
 		// Start with the current RTC bias from SYSCONF
 		settings.rtc_bias = current_bias;
 		printf("    settings.rtc_bias = %08x\n", settings.rtc_bias);
+		
+		// Set FTP defaults
+		settings.ftp_enabled = 0;  // Disabled by default
+		settings.ftp_port = 21;    // Standard FTP port
+		strcpy(settings.ftp_server, "192.168.1.100");  // Default server
+		strcpy(settings.ftp_username, "anonymous");     // Default username
+		strcpy(settings.ftp_password, "");              // Empty password
+		strcpy(settings.ftp_directory, "/");            // Root directory
 
 		res = fwrite(&settings, 1, sizeof(struct slippi_settings), slippi_fp);
 		printf("    wrote %08x bytes to %s\n", res, SD_SLIPPI_DAT_FILE);
@@ -166,6 +174,18 @@ int main(int argc, char *argv[])
 		fclose(slippi_fp);
 
 		printf("    settings.rtc_bias = %08x\n", settings.rtc_bias);
+		
+		// If file is smaller than expected (old version without FTP settings), 
+		// initialize FTP settings with defaults
+		if (res < sizeof(struct slippi_settings)) {
+			printf("    Old config file detected, setting FTP defaults\n");
+			settings.ftp_enabled = 0;
+			settings.ftp_port = 21;
+			strcpy(settings.ftp_server, "192.168.1.100");
+			strcpy(settings.ftp_username, "anonymous");
+			strcpy(settings.ftp_password, "");
+			strcpy(settings.ftp_directory, "/");
+		}
 		//sleep(5);
 	}
 
