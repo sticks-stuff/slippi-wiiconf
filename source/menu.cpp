@@ -566,6 +566,18 @@ static int MenuSlippi()
 			case 8:
 				OnScreenKeyboard(temp_ftp_server, 63);
 				break;
+			// FTP Port
+			case 9:
+				{
+					char port_str[8];
+					snprintf(port_str, 8, "%d", temp_ftp_port);
+					OnScreenKeyboard(port_str, 7);
+					temp_ftp_port = atoi(port_str);
+					// Clamp port to valid range
+					if (temp_ftp_port < 1) temp_ftp_port = 1;
+					if (temp_ftp_port > 65535) temp_ftp_port = 65535;
+				}
+				break;
 			// FTP Username  
 			case 10:
 				OnScreenKeyboard(temp_ftp_username, 31);
