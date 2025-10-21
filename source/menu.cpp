@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wiiuse/wpad.h>
+#include <network.h>
+#include <ctype.h>
 
 #include "libwiigui/gui.h"
 #include "menu.h"
@@ -26,6 +28,10 @@
 #include "Slippi.h"
 
 #define THREAD_SLEEP 100
+
+// Forward declarations for modal prompts used in helpers
+int WindowPrompt(const char *title, const char *msg,
+	const char *btn1Label, const char *btn2Label, const char *btn3Label = NULL);
 
 // Global state
 static GuiImageData * pointer[4];
@@ -89,11 +95,87 @@ static void HaltGui()
 		usleep(THREAD_SLEEP);
 }
 
+static bool parse_ipv4(const char* s, u8 out[4])
+{
+	if (!s)
+		return false;
+	int a=-1,b=-1,c=-1,d=-1;
+	if (sscanf(s, "%d.%d.%d.%d", &a, &b, &c, &d) != 4)
+		return false;
+	if (a<0||a>255||b<0||b>255||c<0||c>255||d<0||d>255)
+		return false;
+	out[0]=(u8)a; out[1]=(u8)b; out[2]=(u8)c; out[3]=(u8)d;
+	return true;
+}
+
+static void format_ipv4(const u8 in[4], char* buf, size_t buflen)
+{
+	if (!buf || buflen==0)
+		return;
+	snprintf(buf, buflen, "%u.%u.%u.%u", in[0], in[1], in[2], in[3]);
+}
+
+static bool is_hex_string(const char* s, size_t n)
+{
+	for (size_t i=0;i<n;++i)
+	{
+		unsigned char c=(unsigned char)s[i];
+		if(!isxdigit(c))
+			return false;
+	}
+	return true;
+}
+
+static bool validate_wifi_config(const wifi &wf)
+{
+	if (wf.ssid_len == 0 || wf.ssid_len > 32)
+	{
+		WindowPrompt("Invalid SSID", "SSID must be 1-32 characters.", "OK", NULL);
+		return false;
+	}
+	switch (wf.enc)
+	{
+		case 0: // Open
+			if (wf.key_len != 0)
+			{
+				WindowPrompt("Open network", "Key should be empty for an open network.", "OK", NULL);
+				return false;
+			}
+			return true;
+		case 1: // WEP64
+			if (!((wf.key_len == 5) || (wf.key_len == 10 && is_hex_string((const char*)wf.key, 10))))
+			{
+				WindowPrompt("WEP64 key", "Enter 5 ASCII chars, or 10 hex digits.", "OK", NULL);
+				return false;
+			}
+			return true;
+		case 2: // WEP128
+			if (!((wf.key_len == 13) || (wf.key_len == 26 && is_hex_string((const char*)wf.key, 26))))
+			{
+				WindowPrompt("WEP128 key", "Enter 13 ASCII chars, or 26 hex digits.", "OK", NULL);
+				return false;
+			}
+			return true;
+		case 4: // WPA TKIP
+		case 5: // WPA2 AES
+		case 6: // WPA AES
+			if ((wf.key_len >= 8 && wf.key_len <= 63))
+				return true;
+			if (wf.key_len == 64 && is_hex_string((const char*)wf.key, 64))
+				return true;
+			WindowPrompt("WPA/WPA2 key", "Enter 8-63 char passphrase, or 64 hex digits.", "OK", NULL);
+			return false;
+		default:
+			WindowPrompt("Encryption", "Unsupported encryption type selected.", "OK", NULL);
+			return false;
+	}
+}
 
 /* Display some window to the user
+ * Returns: 1 for btn1, 0 for btn2, 2 for btn3 (if provided)
  */
 int WindowPrompt(const char *title, const char *msg, 
-	const char *btn1Label, const char *btn2Label)
+	const char *btn1Label, const char *btn2Label, const char *btn3Label)
 {
 	int choice = -1;
 
@@ -108,21 +190,31 @@ int WindowPrompt(const char *title, const char *msg,
 	GuiImageData dialogBox(dialogue_box_png);
 	GuiImage dialogBoxImg(&dialogBox);
 
+	dialogBoxImg.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	dialogBoxImg.SetPosition(0, 0);
+	if (btn3Label)
+		dialogBoxImg.SetScaleY(1.1);
+
 	//GuiText titleTxt(title, 26, (GXColor){0, 0, 0, 255});
 	//titleTxt.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
 	//titleTxt.SetPosition(0,40);
 
-	GuiText msgTxt(msg, 18, (GXColor){0, 0, 0, 255});
+	GuiText msgTxt(msg, btn3Label ? 16 : 18, (GXColor){0, 0, 0, 255});
 	msgTxt.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
-	msgTxt.SetPosition(0,-20);
-	msgTxt.SetWrap(true, 400);
+	msgTxt.SetPosition(0, btn3Label ? -70 : -20);
+	msgTxt.SetWrap(true, btn3Label ? 300 : 400);
 
 	GuiText btn1Txt(btn1Label, 20, (GXColor){0, 0, 0, 255});
 	GuiImage btn1Img(&btnOutline);
 	GuiImage btn1ImgOver(&btnOutlineOver);
 	GuiButton btn1(btnOutline.GetWidth(), btnOutline.GetHeight());
 
-	if(btn2Label)
+	if(btn3Label)
+	{
+		btn1.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+		btn1.SetPosition(0, 0);
+	}
+	else if(btn2Label)
 	{
 		btn1.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
 		btn1.SetPosition(20, -25);
@@ -144,13 +236,35 @@ int WindowPrompt(const char *title, const char *msg,
 	GuiImage btn2Img(&btnOutline);
 	GuiImage btn2ImgOver(&btnOutlineOver);
 	GuiButton btn2(btnOutline.GetWidth(), btnOutline.GetHeight());
-	btn2.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
-	btn2.SetPosition(-20, -25);
+	
+	if(btn3Label)
+	{
+		btn2.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+		btn2.SetPosition(0, 50);
+	}
+	else
+	{
+		btn2.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
+		btn2.SetPosition(-20, -25);
+	}
+	
 	btn2.SetLabel(&btn2Txt);
 	btn2.SetImage(&btn2Img);
 	btn2.SetImageOver(&btn2ImgOver);
 	btn2.SetTrigger(&trigA);
 	btn2.SetEffectGrow();
+
+	GuiText btn3Txt(btn3Label, 20, (GXColor){0, 0, 0, 255});
+	GuiImage btn3Img(&btnOutline);
+	GuiImage btn3ImgOver(&btnOutlineOver);
+	GuiButton btn3(btnOutline.GetWidth(), btnOutline.GetHeight());
+	btn3.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	btn3.SetPosition(0, 100);
+	btn3.SetLabel(&btn3Txt);
+	btn3.SetImage(&btn3Img);
+	btn3.SetImageOver(&btn3ImgOver);
+	btn3.SetTrigger(&trigA);
+	btn3.SetEffectGrow();
 
 	promptWindow.Append(&dialogBoxImg);
 	//promptWindow.Append(&titleTxt);
@@ -159,6 +273,9 @@ int WindowPrompt(const char *title, const char *msg,
 
 	if(btn2Label)
 		promptWindow.Append(&btn2);
+	
+	if(btn3Label)
+		promptWindow.Append(&btn3);
 
 	promptWindow.SetEffect(EFFECT_SLIDE_TOP | EFFECT_SLIDE_IN, 50);
 	HaltGui();
@@ -173,8 +290,10 @@ int WindowPrompt(const char *title, const char *msg,
 
 		if(btn1.GetState() == STATE_CLICKED)
 			choice = 1;
-		else if(btn2.GetState() == STATE_CLICKED)
+		else if(btn2Label && btn2.GetState() == STATE_CLICKED)
 			choice = 0;
+		else if(btn3Label && btn3.GetState() == STATE_CLICKED)
+			choice = 2;
 	}
 
 	promptWindow.SetEffect(EFFECT_SLIDE_TOP | EFFECT_SLIDE_OUT, 50);
@@ -415,11 +534,10 @@ static int MainMenu()
 	{
 		usleep(THREAD_SLEEP);
 
-		// Disable network config menu for now
-		//if(netBtn.GetState() == STATE_CLICKED)
-		//{
-		//	menu = MENU_NETWORK;
-		//}
+		if(netBtn.GetState() == STATE_CLICKED)
+		{
+			menu = MENU_NETWORK;
+		}
 
 		if(nickBtn.GetState() == STATE_CLICKED)
 		{
@@ -729,6 +847,16 @@ const char enc_string[7][32] = {
 //static u8 netcfg[0x1b60] ATTRIBUTE_ALIGN(32) = { 0 };
 static struct network_config netcfg ATTRIBUTE_ALIGN(32);
 
+static bool SaveNetworkConfigToNAND()
+{
+	s32 wfd = IOS_Open(NAND_PATH, IPC_OPEN_WRITE);
+	if (wfd < 0)
+		return false;
+	s32 wr = IOS_Write(wfd, &netcfg, CONFIG_LEN);
+	IOS_Close(wfd);
+	return (wr == CONFIG_LEN);
+}
+
 static int MenuNetwork()
 {
 	bool settings_changed = false;
@@ -826,18 +954,18 @@ static int MenuNetwork()
 	}
 
 	// For now, explicitly disable proxy settings
-	if ((netcfg.profile[0].flags & USE_PROXY) == 1)
+	if ((netcfg.profile[0].flags & USE_PROXY) != 0)
 	{
 		//useProxy = true;
 		netcfg.profile[0].flags &= ~(USE_PROXY);
 	}
 
-	if ((netcfg.profile[0].flags & USE_DHCP_ADDR) == 1)
+	if ((netcfg.profile[0].flags & USE_DHCP_ADDR) != 0)
 	{
 		useDHCP = true;
 	}
 
-	if ((netcfg.profile[0].flags & USE_DHCP_DNS) == 1) 
+	if ((netcfg.profile[0].flags & USE_DHCP_DNS) != 0) 
 		useDHCPDNS = true;
 
 
@@ -952,6 +1080,19 @@ static int MenuNetwork()
 	backBtn.SetTrigger(&trigA);
 	backBtn.SetEffectGrow();
 
+	// "Save" button
+	GuiText saveBtnTxt("Save", 22, (GXColor){0, 0, 0, 255});
+	GuiImage saveBtnImg(&btnOutline);
+	GuiImage saveBtnImgOver(&btnOutlineOver);
+	GuiButton saveBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
+	saveBtn.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
+	saveBtn.SetPosition(-100, -35);
+	saveBtn.SetLabel(&saveBtnTxt);
+	saveBtn.SetImage(&saveBtnImg);
+	saveBtn.SetImageOver(&saveBtnImgOver);
+	saveBtn.SetTrigger(&trigA);
+	saveBtn.SetEffectGrow();
+
 	// Option-browser object
 	GuiOptionBrowser optionBrowser(552, 248, &options);
 	optionBrowser.SetPosition(0, 108);
@@ -962,6 +1103,7 @@ static int MenuNetwork()
 	HaltGui();
 	GuiWindow w(screenwidth, screenheight);
 	w.Append(&backBtn);
+	w.Append(&saveBtn);
 	mainWindow->Append(&optionBrowser);
 	mainWindow->Append(&w);
 	mainWindow->Append(&titleTxt);
@@ -971,8 +1113,9 @@ static int MenuNetwork()
 	{
 		usleep(THREAD_SLEEP);
 
-		// Deal with 'A' presses for "global" options
 		ret = optionBrowser.GetClickedOption();
+		
+		// Deal with 'A' presses for "global" options
 		switch (ret)
 		{
 			case OPT_ENABLE:
@@ -987,72 +1130,173 @@ static int MenuNetwork()
 					netcfg.profile[0].flags &= ~(IS_ACTIVE);
 					netcfg.profile[0].flags &= ~(HAS_INTERNET);
 				}
+				settings_changed = true;
 				break;
 			case OPT_WIRED:
 				useWired = !useWired;
+				settings_changed = true;
 				break;
 			case OPT_DHCP:
 				useDHCP = !useDHCP;
+				if (!useDHCP)
+					useDHCPDNS = false;
+				settings_changed = true;
 				break;
 			case OPT_DHCPDNS:
 				if (useDHCP == true)
 					useDHCPDNS = !useDHCPDNS;
+				settings_changed = true;
 				break;
-		}
 
-		// Deal with 'A' presses for manual config options
-		if (useDHCP == false)
-		{
-			ret = optionBrowser.GetClickedOption();
-			switch (ret)
-			{
-				case OPT_ADDR:
-					break;
-				case OPT_MASK:
-					break;
-				case OPT_GW:
-					break;
-			}
-		}
+			// Deal with 'A' presses for manual config options
+			case OPT_ADDR:
+				if (useDHCP == false)
+				{
+					format_ipv4(netcfg.profile[0].manual.ip, ip_string, sizeof(ip_string));
+					OnScreenKeyboard(ip_string, 31);
+					u8 new_ip[4];
 
-		// Deal with 'A' presses for manual DNS options
-		if (useDHCPDNS == false)
-		{
-			ret = optionBrowser.GetClickedOption();
-			switch (ret)
-			{
-				case OPT_DNS1:
-					break;
-				case OPT_DNS2:
-					break;
-			}
-		}
+					if (!parse_ipv4(ip_string, new_ip))
+					{
+						WindowPrompt("Invalid IP", "Please enter a valid IPv4 address (e.g. 192.168.1.10)", "OK", NULL);
+					}
+					else if (memcmp(new_ip, netcfg.profile[0].manual.ip, 4) != 0)
+					{
+						memcpy(netcfg.profile[0].manual.ip, new_ip, 4);
+						settings_changed = true;
+					}
+				}
+				break;
+			case OPT_MASK:
+				if (useDHCP == false)
+				{
+					format_ipv4(netcfg.profile[0].manual.mask, mask_string, sizeof(mask_string));
+					OnScreenKeyboard(mask_string, 31);
+					u8 new_mask[4];
 
-		// Deal with 'A' presses for Wi-Fi options
-		if (useWired == false)
-		{
-			ret = optionBrowser.GetClickedOption();
-			switch (ret)
-			{
-				// Note that SSID strings are right-padded 
-				// with 0x00 bytes. Remember to verify this. 
-				case OPT_SSID:
-					break;
+					if (!parse_ipv4(mask_string, new_mask))
+					{
+						WindowPrompt("Invalid Netmask", "Please enter a valid IPv4 netmask (e.g. 255.255.255.0)", "OK", NULL);
+					}
+					else if (memcmp(new_mask, netcfg.profile[0].manual.mask, 4) != 0)
+					{
+						memcpy(netcfg.profile[0].manual.mask, new_mask, 4);
+						settings_changed = true;
+					}
+				}
+				break;
+			case OPT_GW:
+				if (useDHCP == false)
+				{
+					format_ipv4(netcfg.profile[0].manual.gw, gw_string, sizeof(gw_string));
+					OnScreenKeyboard(gw_string, 31);
+					u8 new_gw[4];
 
-				// Value for 0x03 is unknown; just skip it.
-				// Wrap around the list after 0x06. 
-				case OPT_ENC:
+					if (!parse_ipv4(gw_string, new_gw))
+					{
+						WindowPrompt("Invalid Gateway", "Please enter a valid IPv4 gateway (e.g. 192.168.1.1)", "OK", NULL);
+					}
+					else if (memcmp(new_gw, netcfg.profile[0].manual.gw, 4) != 0)
+					{
+						memcpy(netcfg.profile[0].manual.gw, new_gw, 4);
+						settings_changed = true;
+					}
+				}
+				break;
+
+			// Deal with 'A' presses for manual DNS options
+			case OPT_DNS1:
+				if (useDHCPDNS == false)
+				{
+					format_ipv4(netcfg.profile[0].manual.dns1, dns1_string, sizeof(dns1_string));
+					OnScreenKeyboard(dns1_string, 31);
+					u8 new_dns1[4];
+
+					if (!parse_ipv4(dns1_string, new_dns1))
+					{
+						WindowPrompt("Invalid DNS", "Please enter a valid IPv4 address for Primary DNS.", "OK", NULL);
+					}
+					else if (memcmp(new_dns1, netcfg.profile[0].manual.dns1, 4) != 0)
+					{
+						memcpy(netcfg.profile[0].manual.dns1, new_dns1, 4);
+						settings_changed = true;
+					}
+				}
+				break;
+			case OPT_DNS2:
+				if (useDHCPDNS == false)
+				{
+					format_ipv4(netcfg.profile[0].manual.dns2, dns2_string, sizeof(dns2_string));
+					OnScreenKeyboard(dns2_string, 31);
+					u8 new_dns2[4];
+
+					if (!parse_ipv4(dns2_string, new_dns2))
+					{
+						WindowPrompt("Invalid DNS", "Please enter a valid IPv4 address for Secondary DNS.", "OK", NULL);
+					}
+					else if (memcmp(new_dns2, netcfg.profile[0].manual.dns2, 4) != 0)
+					{
+						memcpy(netcfg.profile[0].manual.dns2, new_dns2, 4);
+						settings_changed = true;
+					}
+				}
+				break;
+
+			// Deal with 'A' presses for Wi-Fi options
+			case OPT_SSID:
+				if (useWired == false)
+				{
+					// Note that SSID strings are right-padded 
+					// with 0x00 bytes. Remember to verify this. 
+					char ssid_buf[33];
+					memcpy(ssid_buf, netcfg.profile[0].wifi.ssid, 32);
+					ssid_buf[32] = '\0';
+					OnScreenKeyboard(ssid_buf, 32);
+					u8 new_len = (u8)strnlen(ssid_buf, 32);
+
+					if (memcmp(ssid_buf, netcfg.profile[0].wifi.ssid, 32) != 0 || new_len != netcfg.profile[0].wifi.ssid_len)
+					{
+						memset(netcfg.profile[0].wifi.ssid, 0, 32);
+						memcpy(netcfg.profile[0].wifi.ssid, ssid_buf, new_len);
+						netcfg.profile[0].wifi.ssid_len = new_len;
+						settings_changed = true;
+					}
+				}
+				break;
+
+			// Value for 0x03 is unknown; just skip it.
+			// Wrap around the list after 0x06. 
+			case OPT_ENC:
+				if (useWired == false)
+				{
 					netcfg.profile[0].wifi.enc++;
 					if (netcfg.profile[0].wifi.enc == 0x03)
 						netcfg.profile[0].wifi.enc = 0x04;
 					// Wrap around the list
 					if (netcfg.profile[0].wifi.enc > 0x06)
 						netcfg.profile[0].wifi.enc = 0x00;
-					break;
+					settings_changed = true;
+				}
+				break;
 
-				case OPT_KEY:
-					break;
-			}
+			case OPT_KEY:
+				if (useWired == false)
+				{
+					char key_buf[65];
+					memcpy(key_buf, netcfg.profile[0].wifi.key, 64);
+					key_buf[64] = '\0';
+					OnScreenKeyboard(key_buf, 64);
+					u8 klen = (u8)strnlen(key_buf, 64);
+
+					if (memcmp(key_buf, netcfg.profile[0].wifi.key, 64) != 0 || klen != netcfg.profile[0].wifi.key_len)
+					{
+						memset(netcfg.profile[0].wifi.key, 0, 64);
+						memcpy(netcfg.profile[0].wifi.key, key_buf, klen);
+						netcfg.profile[0].wifi.key_len = klen;
+						settings_changed = true;
+					}
+				}
+				break;
 		}
 
 
@@ -1132,9 +1376,157 @@ static int MenuNetwork()
 
 		optionBrowser.TriggerUpdate();
 
+		// Handle Save button
+		if (saveBtn.GetState() == STATE_CLICKED)
+		{
+			saveBtn.ResetState();
+			bool allowSave = true;
+			if (!useWired)
+			{
+				if (!validate_wifi_config(netcfg.profile[0].wifi))
+				{
+					allowSave = false;
+				}
+			}
+			if (allowSave)
+			{
+				// Apply flags/header based on selections prior to save
+				if (connectionEnabled)
+				{
+					netcfg.profile[0].flags |= IS_ACTIVE;
+				}
+				else
+				{
+					netcfg.profile[0].flags &= ~(IS_ACTIVE);
+				}
+				if (useWired)
+				{
+					netcfg.profile[0].flags |= USE_WIRED;
+					netcfg.header[4] = 0x02;
+				}
+				else
+				{
+					netcfg.profile[0].flags &= ~(USE_WIRED);
+					netcfg.header[4] = 0x01;
+				}
+				if (useDHCP)
+				{
+					netcfg.profile[0].flags |= USE_DHCP_ADDR;
+					if (useDHCPDNS)
+						netcfg.profile[0].flags |= USE_DHCP_DNS;
+					else
+						netcfg.profile[0].flags &= ~(USE_DHCP_DNS);
+				}
+				else
+				{
+					netcfg.profile[0].flags &= ~(USE_DHCP_ADDR);
+					netcfg.profile[0].flags &= ~(USE_DHCP_DNS);
+				}
+
+				bool ok = SaveNetworkConfigToNAND();
+				if (!ok)
+				{
+					WindowPrompt("Save Failed", "Couldn't write network configuration to NAND.", "OK", NULL);
+				}
+				else
+				{
+					WindowPrompt("Saved", "Network configuration updated.", "OK", NULL);
+					settings_changed = false;
+				}
+			}
+		}
+
 		if(backBtn.GetState() == STATE_CLICKED)
 		{
-			// Flush settings back to disk before exiting
+			if (settings_changed)
+			{
+				int c = WindowPrompt("Unsaved Changes", "You have unsaved changes. What would you like to do?", "Save", "Don't Save", "Cancel");
+				if (c == 2)
+				{
+					// Cancel
+					continue;
+				}
+				if (c == 1)
+				{
+					// Validate Wi‑Fi config before saving
+					if (!useWired)
+					{
+						if (!validate_wifi_config(netcfg.profile[0].wifi))
+						{
+							// Stay on page
+							continue;
+						}
+					}
+					// Save then exit if successful (or still exit if failed to avoid loops)
+					if (connectionEnabled)
+					{
+						netcfg.profile[0].flags |= IS_ACTIVE;
+					}
+					else
+					{
+						netcfg.profile[0].flags &= ~(IS_ACTIVE);
+					}
+					if (useWired)
+					{
+						netcfg.profile[0].flags |= USE_WIRED;
+						netcfg.header[4] = 0x02;
+					}
+					else
+					{
+						netcfg.profile[0].flags &= ~(USE_WIRED);
+						netcfg.header[4] = 0x01;
+					}
+					if (useDHCP)
+					{
+						netcfg.profile[0].flags |= USE_DHCP_ADDR;
+						if (useDHCPDNS)
+							netcfg.profile[0].flags |= USE_DHCP_DNS;
+						else
+							netcfg.profile[0].flags &= ~(USE_DHCP_DNS);
+					}
+					else
+					{
+						netcfg.profile[0].flags &= ~(USE_DHCP_ADDR);
+						netcfg.profile[0].flags &= ~(USE_DHCP_DNS);
+					}
+					bool ok = SaveNetworkConfigToNAND();
+					if (!ok)
+						WindowPrompt("Save Failed", "Couldn't write network configuration to NAND.", "OK", NULL);
+				}
+			}
+
+			// Exit back to main menu
+			if (connectionEnabled)
+			{
+				netcfg.profile[0].flags |= IS_ACTIVE;
+			}
+			else
+			{
+				netcfg.profile[0].flags &= ~(IS_ACTIVE);
+			}
+			if (useWired)
+			{
+				netcfg.profile[0].flags |= USE_WIRED;
+				netcfg.header[4] = 0x02;
+			}
+			else
+			{
+				netcfg.profile[0].flags &= ~(USE_WIRED);
+				netcfg.header[4] = 0x01;
+			}
+			if (useDHCP)
+			{
+				netcfg.profile[0].flags |= USE_DHCP_ADDR;
+				if (useDHCPDNS)
+					netcfg.profile[0].flags |= USE_DHCP_DNS;
+				else
+					netcfg.profile[0].flags &= ~(USE_DHCP_DNS);
+			}
+			else
+			{
+				netcfg.profile[0].flags &= ~(USE_DHCP_ADDR);
+				netcfg.profile[0].flags &= ~(USE_DHCP_DNS);
+			}
 			menu = MENU_MAIN;
 		}
 	}
