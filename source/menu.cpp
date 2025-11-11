@@ -1073,7 +1073,7 @@ static int MenuNetwork()
 	GuiImage backBtnImgOver(&btnOutlineOver);
 	GuiButton backBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
 	backBtn.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
-	backBtn.SetPosition(100, -35);
+	backBtn.SetPosition(15, -35);
 	backBtn.SetLabel(&backBtnTxt);
 	backBtn.SetImage(&backBtnImg);
 	backBtn.SetImageOver(&backBtnImgOver);
@@ -1086,12 +1086,26 @@ static int MenuNetwork()
 	GuiImage saveBtnImgOver(&btnOutlineOver);
 	GuiButton saveBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
 	saveBtn.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
-	saveBtn.SetPosition(-100, -35);
+	saveBtn.SetPosition(-15, -35);
 	saveBtn.SetLabel(&saveBtnTxt);
 	saveBtn.SetImage(&saveBtnImg);
 	saveBtn.SetImageOver(&saveBtnImgOver);
 	saveBtn.SetTrigger(&trigA);
 	saveBtn.SetEffectGrow();
+
+	// "Test Network Settings" button
+	GuiText testBtnTxt("Test Settings", 22, (GXColor){0, 0, 0, 255});
+	GuiImage testBtnImg(&btnOutline);
+	GuiImage testBtnImgOver(&btnOutlineOver);
+	GuiButton testBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
+	testBtn.SetAlignment(ALIGN_CENTRE, ALIGN_BOTTOM);
+	testBtn.SetPosition(0, -35);
+	testBtn.SetLabel(&testBtnTxt);
+	testBtn.SetImage(&testBtnImg);
+	testBtn.SetImageOver(&testBtnImgOver);
+	testBtn.SetTrigger(&trigA);
+	testBtn.SetEffectGrow();
+
 
 	// Option-browser object
 	GuiOptionBrowser optionBrowser(552, 248, &options);
@@ -1104,6 +1118,7 @@ static int MenuNetwork()
 	GuiWindow w(screenwidth, screenheight);
 	w.Append(&backBtn);
 	w.Append(&saveBtn);
+	w.Append(&testBtn);
 	mainWindow->Append(&optionBrowser);
 	mainWindow->Append(&w);
 	mainWindow->Append(&titleTxt);
@@ -1435,6 +1450,141 @@ static int MenuNetwork()
 				}
 			}
 		}
+
+		// Handle Test Network Settings button
+		if (testBtn.GetState() == STATE_CLICKED)
+		{
+			testBtn.ResetState();
+			bool validWifi = true;
+			if (!useWired)
+			{
+				if (!validate_wifi_config(netcfg.profile[0].wifi))
+				{
+					validWifi = false;
+				}
+			}
+			if (validWifi)
+			{
+				bool proceed = true;
+				if (settings_changed)
+				{
+					int s = WindowPrompt("Save before test?", "Testing uses the system network settings. Save your changes first?", "Save & Test", "Cancel");
+					if (s == 1)
+					{
+						if (connectionEnabled)
+						{
+							netcfg.profile[0].flags |= IS_ACTIVE;
+						}
+						else
+						{
+							netcfg.profile[0].flags &= ~(IS_ACTIVE);
+						}
+						if (useWired)
+						{
+							netcfg.profile[0].flags |= USE_WIRED; netcfg.header[4] = 0x02;
+						}
+						else
+						{
+							netcfg.profile[0].flags &= ~(USE_WIRED); netcfg.header[4] = 0x01;
+						}
+						if (useDHCP)
+						{
+							netcfg.profile[0].flags |= USE_DHCP_ADDR;
+							if (useDHCPDNS)
+							{
+								netcfg.profile[0].flags |= USE_DHCP_DNS;
+							}
+							else
+							{
+								netcfg.profile[0].flags &= ~(USE_DHCP_DNS);
+							}
+						}
+						else
+						{
+							netcfg.profile[0].flags &= ~(USE_DHCP_ADDR);
+							netcfg.profile[0].flags &= ~(USE_DHCP_DNS);
+						}
+						if (!SaveNetworkConfigToNAND())
+						{
+							WindowPrompt("Save Failed", "Couldn't write network configuration to NAND. Cannot run test.", "OK", NULL);
+							proceed = false;
+						}
+						else
+						{
+							settings_changed = false;
+						}
+					}
+					else
+					{
+						proceed = false;
+					}
+				}
+				if (proceed)
+				{
+					int confirm = WindowPrompt("Test Network Settings", "This will temporarily reload IOS and test the connection using the saved system settings. Proceed?", "OK", "Cancel");
+					if (confirm == 1)
+					{
+						HaltGui();
+						WPAD_Shutdown();
+
+						// Reload the currently running IOS to force network modules to re-read config
+						IOS_ReloadIOS(IOS_GetVersion());
+
+						// Give IOS a moment to settle
+						sleep(2);
+
+						// Initialize network (retry a few times)
+						int init_result = -1;
+						for (int attempt = 0; attempt < 15; attempt++)
+						{
+							init_result = net_init();
+							if (init_result >= 0) break;
+							usleep(400000);
+						}
+
+						bool got_ip = false;
+						u32 hostip = 0;
+						if (init_result >= 0)
+						{
+							// wait for IP
+							for (int i = 0; i < 60; i++)
+							{
+								hostip = net_gethostip();
+								if (hostip != 0)
+								{
+									got_ip = true;
+									break;
+								}
+								usleep(250000);
+							}
+						}
+
+						net_deinit();
+						SetupPads();
+						ResumeGui();
+
+						if (got_ip)
+						{
+							char ipstr[16];
+							snprintf(ipstr, sizeof(ipstr), "%u.%u.%u.%u",
+								(hostip >> 24) & 0xFF,
+								(hostip >> 16) & 0xFF,
+								(hostip >> 8) & 0xFF,
+								(hostip) & 0xFF);
+							char msg[96];
+							snprintf(msg, sizeof(msg), "Success! IP: %s", ipstr);
+							WindowPrompt("Connection OK", msg, "OK", NULL);
+						}
+						else
+						{
+							const char *hint = useWired ? "No USB Ethernet adapter?" : "Wrong SSID/password?";
+							WindowPrompt("Connection Failed", hint, "OK", NULL);
+						}
+					}
+				}
+			}
+		}
+
 
 		if(backBtn.GetState() == STATE_CLICKED)
 		{
