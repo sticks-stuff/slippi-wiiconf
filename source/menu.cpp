@@ -14,6 +14,8 @@
 #include <string.h>
 #include <wiiuse/wpad.h>
 #include <network.h>
+#include <errno.h>
+#include <sys/errno.h>
 #include <ctype.h>
 
 #include "libwiigui/gui.h"
@@ -123,6 +125,215 @@ static bool is_hex_string(const char* s, size_t n)
 		if(!isxdigit(c))
 			return false;
 	}
+	return true;
+}
+
+// small HTTP client to fetch utc_offset from worldtimeapi
+// this api is free for non-commercial use with no key
+// no guarantee of availability or uptime however
+// it also gives timezone based on ip, which is convenient
+
+static bool net_init_wait_ip()
+{
+	int init_result = -1;
+
+	for (int attempt = 0; attempt < 15; attempt++)
+	{
+ 		init_result = net_init();
+ 		if (init_result >= 0) break;
+ 		usleep(400000);
+ 	}
+
+ 	if (init_result < 0)
+	{
+		return false;
+	}
+
+ 	// wait for IP
+ 	for (int i = 0; i < 60; i++)
+ 	{
+ 		u32 hostip = net_gethostip();
+ 		if (hostip != 0)
+		{
+			return true;
+		}
+ 		usleep(250000);
+ 	}
+
+ 	return false;
+}
+
+static int parse_json_utc_offset_seconds(const char *buf, int buflen)
+{
+	const char *key = "\"utc_offset\":\"";
+	const char *p = strstr(buf, key);
+
+	if (!p) 
+	{
+		return 0;
+	}
+
+	p += strlen(key);
+	
+	if (!(*p == '+' || *p == '-'))
+	{
+		return 0;
+	}
+	int sign = (*p == '-') ? -1 : 1;
+
+	if (p+6 >= buf+buflen)
+	{
+		return 0;
+	}
+
+	int h1 = p[1]-'0', h2 = p[2]-'0', m1 = p[4]-'0', m2 = p[5]-'0';
+	if (h1<0||h1>9||h2<0||h2>9||m1<0||m1>9||m2<0||m2>9) return 0;
+	
+	int hours = h1*10 + h2;
+	int mins  = m1*10 + m2;
+
+	return (hours*3600 + mins*60) * sign;
+}
+
+static long parse_json_int_field(const char *buf, int buflen, const char *field)
+{
+	char key[64];
+	snprintf(key, sizeof(key), "\"%s\":", field);
+	const char *p = strstr(buf, key);
+
+	if (!p) return 0;
+
+	p += strlen(key);
+
+	// Skip optional quote (not used for numbers here)
+	while (p < buf+buflen && (*p == ' ')) p++;
+
+	if (p >= buf+buflen) return 0;
+	long val = 0;
+	while (p < buf+buflen && *p >= '0' && *p <= '9')
+	{
+		val = val*10 + (*p - '0');
+		p++;
+	}
+
+	return val;
+}
+
+static bool http_get_worldtimeapi_offset(int *out_seconds, long *out_local_unix)
+{
+ 	const char *host = "worldtimeapi.org";
+ 	const char *path = "/api/ip";
+
+ 	struct hostent *hp = net_gethostbyname(host);
+
+ 	if (!hp || !(hp->h_addrtype == PF_INET))
+	{
+		return false;
+	}
+
+ 	s32 s = net_socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+ 	if (s < 0)
+	{
+		return false;
+	}
+
+ 	struct sockaddr_in sa;
+ 	memset(&sa, 0, sizeof(sa));
+ 	sa.sin_family = AF_INET;
+ 	sa.sin_len = sizeof(struct sockaddr_in);
+ 	sa.sin_port = htons(80);
+ 	memcpy(&sa.sin_addr, hp->h_addr_list[0], hp->h_length);
+
+ 	if (net_connect(s, (struct sockaddr*)&sa, sizeof(sa)) < 0)
+ 	{
+ 		net_close(s);
+ 		return false;
+ 	}
+
+ 	char req[256];
+ 	int rl = snprintf(req, sizeof(req),
+ 		"GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: slippi-wiiconf\r\nConnection: close\r\n\r\n",
+ 		path, host);
+ 	if (rl <= 0 || rl >= (int)sizeof(req))
+ 	{
+ 		net_close(s);
+ 		return false;
+ 	}
+
+ 	if (net_write(s, req, rl) < 0)
+ 	{
+ 		net_close(s);
+ 		return false;
+ 	}
+
+ 	// Read response (headers + small JSON body)
+ 	char resp[4096];
+ 	int off = 0;
+ 	for (;;)
+ 	{
+ 		int space = (int)sizeof(resp) - off;
+ 		if (space <= 0) break;
+ 		int r = net_read(s, resp+off, space);
+ 		if (r == 0 || r == -EAGAIN)
+ 		{
+ 			usleep(20000);
+ 			continue;
+ 		}
+ 		if (r < 0) break;
+ 		off += r;
+ 		if (r == 0) break;
+		// if we saw the end of headers and a closing brace, we're done
+		int hdrfound = 0;
+		for (int j = 3; j < off; j++)
+		{
+			if (resp[j-3]=='\r'&&resp[j-2]=='\n'&&resp[j-1]=='\r'&&resp[j]=='\n')
+			{
+				hdrfound = 1;
+				break;
+			}
+		}
+		if (hdrfound)
+		{
+			for (int j = 0; j < off; j++) { if (resp[j] == '}') { hdrfound = 2; break; } }
+			if (hdrfound == 2) break;
+		}
+ 	}
+ 	net_close(s);
+
+ 	if (off <= 0) return false;
+
+ 	// Find start of body
+	char *body = NULL;
+	for (int j = 3; j < off; j++)
+	{
+		if (resp[j-3]=='\r'&&resp[j-2]=='\n'&&resp[j-1]=='\r'&&resp[j]=='\n')
+		{
+			body = resp + j + 1;
+			break;
+		}
+	}
+
+	if (!body)
+	{
+		body = resp;
+	}
+
+	int offset_secs = parse_json_utc_offset_seconds(body, resp + off - body);
+	long unix_secs = parse_json_int_field(body, resp + off - body, "unixtime");
+	if (unix_secs <= 0)
+	{
+		return false;
+	}
+
+	// Compute local unix time using offset (dst already included in utc_offset per API doc)
+	long local_unix = unix_secs + offset_secs;
+	// Get current RTC seconds since 1/1/2000
+	u32 cur_rtc = 0; __SYS_GetRTC(&cur_rtc);
+	// 1/1/2000 base in unix
+	const long UNIX_BASE_CONST = 946684800;
+	long bias = local_unix - (UNIX_BASE_CONST + (long)cur_rtc);
+	*out_seconds = (int)bias;
+	if (out_local_unix) *out_local_unix = local_unix;
 	return true;
 }
 
@@ -606,12 +817,28 @@ static int MenuSlippi()
 	GuiImage backBtnImgOver(&btnOutlineOver);
 	GuiButton backBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
 	backBtn.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
-	backBtn.SetPosition(100, -35);
+	backBtn.SetPosition(50, -35);
 	backBtn.SetLabel(&backBtnTxt);
 	backBtn.SetImage(&backBtnImg);
 	backBtn.SetImageOver(&backBtnImgOver);
 	backBtn.SetTrigger(&trigA);
 	backBtn.SetEffectGrow();
+
+	// "Set time from Internet" button
+	GuiText netTimeBtnTxt("Set time from Internet", 22, (GXColor){0, 0, 0, 255});
+	GuiImage netTimeBtnImg(&btnOutline);
+	float scale = 1.6;
+	netTimeBtnImg.SetScaleX(scale);
+	GuiImage netTimeBtnImgOver(&btnOutlineOver);
+	netTimeBtnImgOver.SetScaleX(scale);
+	GuiButton netTimeBtn(btnOutline.GetWidth() * scale, btnOutline.GetHeight());
+	netTimeBtn.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
+	netTimeBtn.SetPosition(-50, -35);
+	netTimeBtn.SetLabel(&netTimeBtnTxt);
+	netTimeBtn.SetImage(&netTimeBtnImg);
+	netTimeBtn.SetImageOver(&netTimeBtnImgOver);
+	netTimeBtn.SetTrigger(&trigA);
+	netTimeBtn.SetEffectGrow();
 
 	//GuiOptionBrowser optionBrowser(552, 248, &options);
 	//optionBrowser.SetPosition(0, 108);
@@ -626,6 +853,7 @@ static int MenuSlippi()
 	HaltGui();
 	GuiWindow w(screenwidth, screenheight);
 	w.Append(&backBtn);
+	w.Append(&netTimeBtn);
 	mainWindow->Append(&optionBrowser);
 	mainWindow->Append(&w);
 	mainWindow->Append(&titleTxt);
@@ -654,6 +882,53 @@ static int MenuSlippi()
 			case 0:
 				OnScreenKeyboard(temp_nickname, 31);
 				break;
+		}
+
+		// Handle internet time button
+		if (netTimeBtn.GetState() == STATE_CLICKED)
+		{
+			netTimeBtn.ResetState();
+			bool ok = false;
+			HaltGui();
+			WPAD_Shutdown();
+			if (net_init_wait_ip())
+			{
+				int new_bias = 0; long local_unix_dbg = 0;
+				ok = http_get_worldtimeapi_offset(&new_bias, &local_unix_dbg);
+				net_deinit();
+				ResumeGui();
+				SetupPads();
+				if (ok)
+				{
+					temp_bias = (u32)new_bias;
+					settings.rtc_bias = temp_bias;
+					settings_changed = true;
+					WindowPrompt("Internet Time", "Time updated successfully set from internet!", "OK", NULL);
+					// persist immediately so user doesn't need to back out
+					FILE *slippi_fp = fopen(SD_SLIPPI_DAT_FILE, "wb");
+					if (slippi_fp)
+					{
+						fwrite(&settings, 1, sizeof(struct slippi_settings), slippi_fp);
+						fclose(slippi_fp);
+						usleep(200);
+					}
+					else
+					{
+						WindowPrompt("Save Failed", "Couldn't open settings file to write time.", "OK", NULL);
+					}
+					// force immediate UI refresh of clock
+					__SYS_GetRTC(&current_rtc);
+					current_unixtime = UNIX_BASE + current_rtc + temp_bias;
+					current_time = gmtime(&current_unixtime);
+				}
+			}
+			if (!ok)
+			{
+				net_deinit();
+				ResumeGui();
+				SetupPads();
+				WindowPrompt("Internet Time", "Failed to fetch time. Check your network.", "OK", NULL);
+			}
 		}
 
 		// Handle Left/Right pad presses for certain options

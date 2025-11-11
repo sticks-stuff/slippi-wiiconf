@@ -13,7 +13,9 @@
 
 // Fonts
 extern const u8		font_ttf[];
-extern const u32	font_ttf_size;
+extern const u8		font_ttf_end[];
+// Size computed from linker-provided symbols
+#define font_ttf_size ((u32)(font_ttf_end - font_ttf))
 
 // Languages
 extern const u8		en_lang[];
@@ -24,10 +26,12 @@ extern const u8		bg_music_ogg[];
 extern const u32	bg_music_ogg_size;
 
 extern const u8		button_over_pcm[];
-extern const u32	button_over_pcm_size;
+extern const u8		button_over_pcm_end[];
+#define button_over_pcm_size ((u32)(button_over_pcm_end - button_over_pcm))
 
 extern const u8		button_click_pcm[];
-extern const u32	button_click_pcm_size;
+extern const u8		button_click_pcm_end[];
+#define button_click_pcm_size ((u32)(button_click_pcm_end - button_click_pcm))
 
 // Images
 extern const u8		button_png[];
