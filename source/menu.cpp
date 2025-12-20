@@ -391,7 +391,7 @@ int WindowPrompt(const char *title, const char *msg,
 	int choice = -1;
 
 	GuiWindow promptWindow(448,288);
-	promptWindow.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	promptWindow.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	promptWindow.SetPosition(0, -10);
 	GuiImageData btnOutline(button_png);
 	GuiImageData btnOutlineOver(button_over_png);
@@ -401,17 +401,17 @@ int WindowPrompt(const char *title, const char *msg,
 	GuiImageData dialogBox(dialogue_box_png);
 	GuiImage dialogBoxImg(&dialogBox);
 
-	dialogBoxImg.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	dialogBoxImg.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	dialogBoxImg.SetPosition(0, 0);
 	if (btn3Label)
 		dialogBoxImg.SetScaleY(1.1);
 
 	//GuiText titleTxt(title, 26, (GXColor){0, 0, 0, 255});
-	//titleTxt.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
+	//titleTxt.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	//titleTxt.SetPosition(0,40);
 
 	GuiText msgTxt(msg, btn3Label ? 16 : 18, (GXColor){0, 0, 0, 255});
-	msgTxt.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	msgTxt.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	msgTxt.SetPosition(0, btn3Label ? -70 : -20);
 	msgTxt.SetWrap(true, btn3Label ? 300 : 400);
 
@@ -422,17 +422,17 @@ int WindowPrompt(const char *title, const char *msg,
 
 	if(btn3Label)
 	{
-		btn1.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+		btn1.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 		btn1.SetPosition(0, 0);
 	}
 	else if(btn2Label)
 	{
-		btn1.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
+		btn1.SetAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
 		btn1.SetPosition(20, -25);
 	}
 	else
 	{
-		btn1.SetAlignment(ALIGN_CENTRE, ALIGN_BOTTOM);
+		btn1.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::BOTTOM);
 		btn1.SetPosition(0, -25);
 	}
 
@@ -440,7 +440,7 @@ int WindowPrompt(const char *title, const char *msg,
 	btn1.SetImage(&btn1Img);
 	btn1.SetImageOver(&btn1ImgOver);
 	btn1.SetTrigger(&trigA);
-	btn1.SetState(STATE_SELECTED);
+	btn1.SetState(STATE::SELECTED);
 	btn1.SetEffectGrow();
 
 	GuiText btn2Txt(btn2Label, 20, (GXColor){0, 0, 0, 255});
@@ -450,12 +450,12 @@ int WindowPrompt(const char *title, const char *msg,
 	
 	if(btn3Label)
 	{
-		btn2.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+		btn2.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 		btn2.SetPosition(0, 50);
 	}
 	else
 	{
-		btn2.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
+		btn2.SetAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
 		btn2.SetPosition(-20, -25);
 	}
 	
@@ -469,7 +469,7 @@ int WindowPrompt(const char *title, const char *msg,
 	GuiImage btn3Img(&btnOutline);
 	GuiImage btn3ImgOver(&btnOutlineOver);
 	GuiButton btn3(btnOutline.GetWidth(), btnOutline.GetHeight());
-	btn3.SetAlignment(ALIGN_CENTRE, ALIGN_MIDDLE);
+	btn3.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::MIDDLE);
 	btn3.SetPosition(0, 100);
 	btn3.SetLabel(&btn3Txt);
 	btn3.SetImage(&btn3Img);
@@ -488,9 +488,9 @@ int WindowPrompt(const char *title, const char *msg,
 	if(btn3Label)
 		promptWindow.Append(&btn3);
 
-	promptWindow.SetEffect(EFFECT_SLIDE_TOP | EFFECT_SLIDE_IN, 50);
+	promptWindow.SetEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_IN, 50);
 	HaltGui();
-	mainWindow->SetState(STATE_DISABLED);
+	mainWindow->SetState(STATE::DISABLED);
 	mainWindow->Append(&promptWindow);
 	mainWindow->ChangeFocus(&promptWindow);
 	ResumeGui();
@@ -499,19 +499,19 @@ int WindowPrompt(const char *title, const char *msg,
 	{
 		usleep(THREAD_SLEEP);
 
-		if(btn1.GetState() == STATE_CLICKED)
+		if(btn1.GetState() == STATE::CLICKED)
 			choice = 1;
-		else if(btn2Label && btn2.GetState() == STATE_CLICKED)
+		else if(btn2Label && btn2.GetState() == STATE::CLICKED)
 			choice = 0;
-		else if(btn3Label && btn3.GetState() == STATE_CLICKED)
+		else if(btn3Label && btn3.GetState() == STATE::CLICKED)
 			choice = 2;
 	}
 
-	promptWindow.SetEffect(EFFECT_SLIDE_TOP | EFFECT_SLIDE_OUT, 50);
+	promptWindow.SetEffect(EFFECT::SLIDE_TOP | EFFECT::SLIDE_OUT, 50);
 	while(promptWindow.GetEffect() > 0) usleep(THREAD_SLEEP);
 	HaltGui();
 	mainWindow->Remove(&promptWindow);
-	mainWindow->SetState(STATE_DEFAULT);
+	mainWindow->SetState(STATE::DEFAULT);
 	ResumeGui();
 	return choice;
 }
@@ -597,7 +597,7 @@ static void OnScreenKeyboard(char * var, u16 maxlen)
 	GuiImage okBtnImgOver(&btnOutlineOver);
 	GuiButton okBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
 
-	okBtn.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
+	okBtn.SetAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
 	okBtn.SetPosition(25, -25);
 
 	okBtn.SetLabel(&okBtnTxt);
@@ -610,7 +610,7 @@ static void OnScreenKeyboard(char * var, u16 maxlen)
 	GuiImage cancelBtnImg(&btnOutline);
 	GuiImage cancelBtnImgOver(&btnOutlineOver);
 	GuiButton cancelBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
-	cancelBtn.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
+	cancelBtn.SetAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
 	cancelBtn.SetPosition(-25, -25);
 	cancelBtn.SetLabel(&cancelBtnTxt);
 	cancelBtn.SetImage(&cancelBtnImg);
@@ -622,7 +622,7 @@ static void OnScreenKeyboard(char * var, u16 maxlen)
 	keyboard.Append(&cancelBtn);
 
 	HaltGui();
-	mainWindow->SetState(STATE_DISABLED);
+	mainWindow->SetState(STATE::DISABLED);
 	mainWindow->Append(&keyboard);
 	mainWindow->ChangeFocus(&keyboard);
 	ResumeGui();
@@ -631,9 +631,9 @@ static void OnScreenKeyboard(char * var, u16 maxlen)
 	{
 		usleep(THREAD_SLEEP);
 
-		if(okBtn.GetState() == STATE_CLICKED)
+		if(okBtn.GetState() == STATE::CLICKED)
 			save = 1;
-		else if(cancelBtn.GetState() == STATE_CLICKED)
+		else if(cancelBtn.GetState() == STATE::CLICKED)
 			save = 0;
 	}
 
@@ -644,7 +644,7 @@ static void OnScreenKeyboard(char * var, u16 maxlen)
 
 	HaltGui();
 	mainWindow->Remove(&keyboard);
-	mainWindow->SetState(STATE_DEFAULT);
+	mainWindow->SetState(STATE::DEFAULT);
 	ResumeGui();
 }
 
@@ -657,7 +657,7 @@ static int MainMenu()
 
 	// Main menu title
 	GuiText titleTxt("wii-netconf", 28, (GXColor){255, 255, 255, 255});
-	titleTxt.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
+	titleTxt.SetAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
 	titleTxt.SetPosition(50,50);
 
 	// Init button objects
@@ -678,7 +678,7 @@ static int MainMenu()
 	GuiImage netBtnImg(&btnLargeOutline);
 	GuiImage netBtnImgOver(&btnLargeOutlineOver);
 	GuiButton netBtn(btnLargeOutline.GetWidth(), btnLargeOutline.GetHeight());
-	netBtn.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
+	netBtn.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	netBtn.SetPosition(0, 120);
 	netBtn.SetLabel(&netBtnTxt);
 	netBtn.SetImage(&netBtnImg);
@@ -692,7 +692,7 @@ static int MainMenu()
 	GuiImage nickBtnImg(&btnLargeOutline);
 	GuiImage nickBtnImgOver(&btnLargeOutlineOver);
 	GuiButton nickBtn(btnLargeOutline.GetWidth(), btnLargeOutline.GetHeight());
-	nickBtn.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
+	nickBtn.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	nickBtn.SetPosition(0, 250);
 	nickBtn.SetLabel(&nickBtnTxt);
 	nickBtn.SetImage(&nickBtnImg);
@@ -705,7 +705,7 @@ static int MainMenu()
 	GuiImage exitBtnImg(&btnOutline);
 	GuiImage exitBtnImgOver(&btnOutlineOver);
 	GuiButton exitBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
-	exitBtn.SetAlignment(ALIGN_CENTRE, ALIGN_BOTTOM);
+	exitBtn.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::BOTTOM);
 	exitBtn.SetPosition(0, -35);
 	exitBtn.SetLabel(&exitBtnTxt);
 	exitBtn.SetImage(&exitBtnImg);
@@ -745,16 +745,16 @@ static int MainMenu()
 	{
 		usleep(THREAD_SLEEP);
 
-		if(netBtn.GetState() == STATE_CLICKED)
+		if(netBtn.GetState() == STATE::CLICKED)
 		{
 			menu = MENU_NETWORK;
 		}
 
-		if(nickBtn.GetState() == STATE_CLICKED)
+		if(nickBtn.GetState() == STATE::CLICKED)
 		{
 			menu = MENU_SLIPPI;
 		}
-		if(exitBtn.GetState() == STATE_CLICKED)
+		if(exitBtn.GetState() == STATE::CLICKED)
 		{
 			menu = MENU_EXIT;
 		}
@@ -802,7 +802,7 @@ static int MenuSlippi()
 	strncpy(temp_nickname, settings.nickname, 32);
 
 	GuiText titleTxt("Slippi Settings", 28, (GXColor){255, 255, 255, 255});
-	titleTxt.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
+	titleTxt.SetAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
 	titleTxt.SetPosition(50,50);
 
 	GuiImageData btnOutline(button_png);
@@ -816,7 +816,7 @@ static int MenuSlippi()
 	GuiImage backBtnImg(&btnOutline);
 	GuiImage backBtnImgOver(&btnOutlineOver);
 	GuiButton backBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
-	backBtn.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
+	backBtn.SetAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
 	backBtn.SetPosition(50, -35);
 	backBtn.SetLabel(&backBtnTxt);
 	backBtn.SetImage(&backBtnImg);
@@ -832,7 +832,7 @@ static int MenuSlippi()
 	GuiImage netTimeBtnImgOver(&btnOutlineOver);
 	netTimeBtnImgOver.SetScaleX(scale);
 	GuiButton netTimeBtn(btnOutline.GetWidth() * scale, btnOutline.GetHeight());
-	netTimeBtn.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
+	netTimeBtn.SetAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
 	netTimeBtn.SetPosition(-50, -35);
 	netTimeBtn.SetLabel(&netTimeBtnTxt);
 	netTimeBtn.SetImage(&netTimeBtnImg);
@@ -844,7 +844,7 @@ static int MenuSlippi()
 	//optionBrowser.SetPosition(0, 108);
 	GuiOptionBrowser optionBrowser(552, 248, &options);
 	optionBrowser.SetPosition(0, 108);
-	optionBrowser.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
+	optionBrowser.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	optionBrowser.SetCol2Position(185);
 
 	// Enable use of STATE_INCREMENT and STATE_DECREMENT
@@ -885,7 +885,7 @@ static int MenuSlippi()
 		}
 
 		// Handle internet time button
-		if (netTimeBtn.GetState() == STATE_CLICKED)
+		if (netTimeBtn.GetState() == STATE::CLICKED)
 		{
 			netTimeBtn.ResetState();
 			bool ok = false;
@@ -932,7 +932,7 @@ static int MenuSlippi()
 		}
 
 		// Handle Left/Right pad presses for certain options
-		ret = optionBrowser.GetIncDecOption(INCREMENT);
+		ret = optionBrowser.GetIncDecOption(INCREMENT_VALUE);
 		switch (ret)
 		{
 			// Year
@@ -966,7 +966,7 @@ static int MenuSlippi()
 		if ((current_unixtime - UNIX_BASE - current_rtc) != temp_bias)
 			temp_bias = current_unixtime - UNIX_BASE - current_rtc;
 
-		ret = optionBrowser.GetIncDecOption(DECREMENT);
+		ret = optionBrowser.GetIncDecOption(DECREMENT_VALUE);
 		switch (ret)
 		{
 			// Year
@@ -1014,7 +1014,7 @@ static int MenuSlippi()
 
 		optionBrowser.TriggerUpdate();
 
-		if(backBtn.GetState() == STATE_CLICKED)
+		if(backBtn.GetState() == STATE::CLICKED)
 		{
 			// If any options have changed, move them back to `struct slippi_settings`
 			if (strncmp(temp_nickname, settings.nickname, 32) != 0) 
@@ -1335,7 +1335,7 @@ static int MenuNetwork()
 
 	// Title
 	GuiText titleTxt("Network Settings", 28, (GXColor){255, 255, 255, 255});
-	titleTxt.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
+	titleTxt.SetAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
 	titleTxt.SetPosition(50,50);
 
 	// "Go back" button
@@ -1347,7 +1347,7 @@ static int MenuNetwork()
 	GuiImage backBtnImg(&btnOutline);
 	GuiImage backBtnImgOver(&btnOutlineOver);
 	GuiButton backBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
-	backBtn.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
+	backBtn.SetAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
 	backBtn.SetPosition(15, -35);
 	backBtn.SetLabel(&backBtnTxt);
 	backBtn.SetImage(&backBtnImg);
@@ -1360,7 +1360,7 @@ static int MenuNetwork()
 	GuiImage saveBtnImg(&btnOutline);
 	GuiImage saveBtnImgOver(&btnOutlineOver);
 	GuiButton saveBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
-	saveBtn.SetAlignment(ALIGN_RIGHT, ALIGN_BOTTOM);
+	saveBtn.SetAlignment(ALIGN_H::RIGHT, ALIGN_V::BOTTOM);
 	saveBtn.SetPosition(-15, -35);
 	saveBtn.SetLabel(&saveBtnTxt);
 	saveBtn.SetImage(&saveBtnImg);
@@ -1373,7 +1373,7 @@ static int MenuNetwork()
 	GuiImage testBtnImg(&btnOutline);
 	GuiImage testBtnImgOver(&btnOutlineOver);
 	GuiButton testBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
-	testBtn.SetAlignment(ALIGN_CENTRE, ALIGN_BOTTOM);
+	testBtn.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::BOTTOM);
 	testBtn.SetPosition(0, -35);
 	testBtn.SetLabel(&testBtnTxt);
 	testBtn.SetImage(&testBtnImg);
@@ -1385,7 +1385,7 @@ static int MenuNetwork()
 	// Option-browser object
 	GuiOptionBrowser optionBrowser(552, 248, &options);
 	optionBrowser.SetPosition(0, 108);
-	optionBrowser.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
+	optionBrowser.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	optionBrowser.SetCol2Position(185);
 	optionBrowser.useIncDec = 1;
 
@@ -1667,7 +1667,7 @@ static int MenuNetwork()
 		optionBrowser.TriggerUpdate();
 
 		// Handle Save button
-		if (saveBtn.GetState() == STATE_CLICKED)
+		if (saveBtn.GetState() == STATE::CLICKED)
 		{
 			saveBtn.ResetState();
 			bool allowSave = true;
@@ -1727,7 +1727,7 @@ static int MenuNetwork()
 		}
 
 		// Handle Test Network Settings button
-		if (testBtn.GetState() == STATE_CLICKED)
+		if (testBtn.GetState() == STATE::CLICKED)
 		{
 			testBtn.ResetState();
 			bool validWifi = true;
@@ -1861,7 +1861,7 @@ static int MenuNetwork()
 		}
 
 
-		if(backBtn.GetState() == STATE_CLICKED)
+		if(backBtn.GetState() == STATE::CLICKED)
 		{
 			if (settings_changed)
 			{
@@ -1987,7 +1987,7 @@ static int MenuSettingsFile()
 	options.length = i;
 
 	GuiText titleTxt("Settings - Saving & Loading", 28, (GXColor){255, 255, 255, 255});
-	titleTxt.SetAlignment(ALIGN_LEFT, ALIGN_TOP);
+	titleTxt.SetAlignment(ALIGN_H::LEFT, ALIGN_V::TOP);
 	titleTxt.SetPosition(50,50);
 
 	GuiImageData btnOutline(button_png);
@@ -2000,7 +2000,7 @@ static int MenuSettingsFile()
 	GuiImage backBtnImg(&btnOutline);
 	GuiImage backBtnImgOver(&btnOutlineOver);
 	GuiButton backBtn(btnOutline.GetWidth(), btnOutline.GetHeight());
-	backBtn.SetAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
+	backBtn.SetAlignment(ALIGN_H::LEFT, ALIGN_V::BOTTOM);
 	backBtn.SetPosition(100, -35);
 	backBtn.SetLabel(&backBtnTxt);
 	backBtn.SetImage(&backBtnImg);
@@ -2010,7 +2010,7 @@ static int MenuSettingsFile()
 
 	GuiOptionBrowser optionBrowser(552, 248, &options);
 	optionBrowser.SetPosition(0, 108);
-	optionBrowser.SetAlignment(ALIGN_CENTRE, ALIGN_TOP);
+	optionBrowser.SetAlignment(ALIGN_H::CENTRE, ALIGN_V::TOP);
 	optionBrowser.SetCol2Position(185);
 
 	HaltGui();
@@ -2100,7 +2100,7 @@ static int MenuSettingsFile()
 			optionBrowser.TriggerUpdate();
 		}
 
-		if(backBtn.GetState() == STATE_CLICKED)
+		if(backBtn.GetState() == STATE::CLICKED)
 		{
 			menu = MENU_MAIN;
 		}

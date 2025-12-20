@@ -1,5 +1,4 @@
+build/
 *.dol
 *.elf
-*.o
-*.map
-build/
+/.project
